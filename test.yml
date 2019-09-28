@@ -1,0 +1,7 @@
+---
+- hosts: ansi-test
+  remote_user: root
+  tasks:
+    - name: Install httpd
+      yum: name=httpd state=present
+

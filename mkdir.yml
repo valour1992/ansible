@@ -1,0 +1,9 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: ansible create directory example
+    file:
+      path: /opt/testdir/Ericsson
+      state: directory
+      owner: wwww-suraj
+      group: www-suraj

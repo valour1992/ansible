@@ -1,0 +1,18 @@
+---
+- hosts: ansi-test
+  tasks:
+  - group: 
+      name: devops
+      become: yes
+      state: present
+      gid: 2010
+
+  - name: Create user
+    user:
+      name: "{{ item }}"
+      group: devops
+    with_items:
+      - 'Lora'
+      - 'dock'
+
+    

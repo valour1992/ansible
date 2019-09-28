@@ -1,0 +1,8 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: change permission
+    file:
+      path: /opt/test1
+      state: directory
+      mode: 0777

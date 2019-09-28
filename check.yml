@@ -1,0 +1,11 @@
+---
+- hosts: ansi-test
+  tasks:
+    - name: install httpd
+      yum:
+        name: httpd
+    - name: install ntp
+      yum: 
+        name: ntp 
+
+    

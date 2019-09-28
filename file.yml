@@ -1,0 +1,13 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: ansible create file
+    file:
+      path: /opt/ansible.txt
+      state: touch
+
+  - name: Ensure SELinux is set to enforcing mode
+    lineinfile:
+        path: /etc/selinux/config
+        regexp: '^SELINUX='
+        line: SELINUX=disable

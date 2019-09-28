@@ -1,0 +1,11 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: "create directory"
+    file:
+       path: "{{ item }}"
+       state: directory
+    with_items:
+     - '/opt/test1'
+     - '/opt/test2'
+       

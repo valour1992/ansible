@@ -1,0 +1,8 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: create local dir
+    local_action:
+      module: file
+      path: /opt/localdir
+      state: directory

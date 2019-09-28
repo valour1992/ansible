@@ -1,0 +1,11 @@
+- name: "add group"
+  group:
+    name: eric
+    gid: 1234
+    state: present
+- name: "add user"
+  user:
+    name: suraj
+    uid: 1234
+    group: eric
+    state: present

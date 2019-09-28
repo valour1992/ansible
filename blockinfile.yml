@@ -1,0 +1,13 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: Blockinfile
+    blockinfile:
+        path: /root/abc.txt
+        block: |
+             Hi this  blockInfile Example
+        backup: yes
+        insertbefore: "^Hi this  blockInfile Example"
+        block: |
+             Adding u before this
+

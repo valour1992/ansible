@@ -1,0 +1,9 @@
+---
+- hosts: ansi-test
+  tasks:
+  - name: Add sudo group rights for deployment user.
+    lineinfile:
+              dest: /etc/sudoers
+              regexp: '^%suraj'
+              line: 'suraj ALL=(ALL) NOPASSWD: ALL'
+              state: present

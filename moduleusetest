@@ -1,0 +1,19 @@
+---
+- hosts: ansi-test
+  tasks:
+      - name: Install nano
+        yum: 
+           name: nano
+
+      - name: service check 
+        service:
+              name: httpd
+              state: restarted
+
+
+      - name: Copy file to other locations
+        copy:
+            src: /home/home/testcopy.txt
+            dest: /tmp
+
+

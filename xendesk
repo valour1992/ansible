@@ -1,0 +1,86 @@
+---
+- name:  Migrate XenDesktop
+  gather_facts: true
+  hosts: all
+  tasks:
+    - name: Check if postgresql94 is installed
+      shell: |
+        rpm -q postgresql94
+      register: postgresql94
+      changed_when: False
+      ignore_errors: yes
+      when:
+        - ansible_distribution == 'SLES'
+    - name: Stop postgresql
+      service:
+        name: postgresql
+        state: stopped
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Stop ctxvda
+      service:
+        name: ctxvda
+        state: stopped
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Stop ctxhdx
+      service:
+        name: ctxhdx
+        state: stopped
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Kill everything related to CitrixVDA
+      command: "/usr/bin/pkill -f VDA"
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Remove XenDesktopVDA
+      package:
+        name: XenDesktopVDA
+        state: absent
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Remove /opt/Citrix/VDA
+      file:
+        path: /opt/Citrix/VDA
+        state: absent
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Remove /etc/xdl
+      file:
+        path: /etc/xdl
+        state: absent
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Remove /var/xdl
+      file:
+        path: /var/xdl
+        state: absent
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Stop postgrsql
+      service:
+        name: postgresql
+        state: stopped
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: Remove postgresql
+      shell: "rpm -qa postgresql91* | xargs rpm -e && mv /var/lib/pgsql/data /var/lib/pgsql/data.old"
+      when:
+        - ansible_distribution == 'SLES'
+        - postgresql94.rc > 0
+    - name: run puppet
+      shell: /opt/puppet/bin/puppet agent -t --environment production --color=false
+      args:
+        executable: /bin/bash
+      register: puppet_out
+      failed_when: puppet_out.rc == 1
+      changed_when: puppet_out.rc > 1

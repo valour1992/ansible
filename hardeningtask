@@ -1,0 +1,34 @@
+---
+- hosts:
+  tasks:
+  	- name: removing unused repository
+  	  file:
+  	  	name: "/etc/yum.repos.d/{{ item }}.repo"
+  	  	state: absent
+  	  loop:
+  	  	- 'centos-debuginfo'
+  	  	- 'centos-media'
+  	  	- 'Centos_vault'
+
+
+  	- name: Get yum files present
+  	  find:
+  	  	path: '/etc/yum.repos.d'
+  	  	patterns: ' *.repo'
+  	  register: yum_repos
+
+
+  	- name: Activate Gpg key for signature
+  	  replace:
+  	   	path: '{{ item.path }}'
+  	   	regexp: '^\s*gpgcheck.*'
+  	   	replace: 'gpgcheck=1'
+  	   	mode: '0644'
+  	  with_items:
+  	   	- '{{ yum_repos.files | default([]) }}' 
+
+
+  	- name:  create file if it doesn't exist example
+      file:
+      path: "/etc/facter/facts.d/vdl.txt"
+      state: touch

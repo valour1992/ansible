@@ -1,0 +1,26 @@
+---
+- hosts: all
+  tasks:
+  	- name: Installing prerequest packages
+  	  yum:
+  	  	name: "{{ item }}""
+  	  	state: present
+  	  with_items:
+  	  	- yum-utilis
+  	  	- device-mapper-persistentdata
+  	  	- lvm2
+  	- name: Adding docker repository
+  	  get_url:
+  	  	url:
+  	  	dest: /etc/yum.repos.d/docker-ce.repo
+
+  	- name: Installing docker
+  	   yum:
+  	    name: docker-ce
+  	    state: present
+
+  	- name: restarting the docker service 
+  	  service:
+  	  	name: docker
+  	  	state: restarted
+  	  	enabled: yes

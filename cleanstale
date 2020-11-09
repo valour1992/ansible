@@ -1,0 +1,281 @@
+---
+
+
+- name:  Clean stale filesystems without logging
+  hosts: all
+  gather_facts: no
+  serial: 100
+  strategy: free
+  environment: 
+    PATH: "/bin:/usr/bin:/usr/sbin:/sbin"
+
+  tasks:
+    - name: Filter facts
+      setup:
+        filter: ansible_*
+
+
+    - name: Check if cleanstale.pl exists
+      stat: 
+        path: /usr/lib/clean-stale.pl
+      register: iscleanstale
+
+    - name: Create cleanstale.pl
+      when: iscleanstale.stat.exists == False
+      copy: 
+        dest: /usr/lib/clean-stale.pl
+        mode: 0750
+        owner: root
+        content: |
+          #!/usr/bin/env perl
+
+          # Checks for NFS/MVFS mounts with problems using opendir and statfs.
+          
+
+          use strict;
+          use warnings;
+          use POSIX;
+          use IO::Handle;
+          use Socket;
+          use IO::Select;
+
+          package worker;
+
+          sub new {
+              my $class = shift;
+              my $statfs = shift;
+              my $childfd;
+              my $parentfd;
+              my $current = '';
+              my $pid = -1;
+              my $select;
+              my $time = 0;
+
+              my $self = bless { childfd => $childfd,
+                     parentfd => $parentfd,
+                     current => $current, 
+                     pid => $pid,
+                     statfs => $statfs,
+                     select => $select,
+                     time => $time}, $class;
+              return $self;
+          }
+
+          sub start {
+              my $self = shift;
+              $self->{select} = IO::Select->new();
+              socketpair($self->{parentfd}, $self->{childfd}, Socket::AF_UNIX, Socket::SOCK_STREAM, Socket::PF_UNSPEC) || die "socketpair: $!\n";
+              $self->{parentfd}->autoflush(1);
+              $self->{childfd}->autoflush(1);
+              $self->{select}->add($self->{parentfd});
+          }
+
+          sub stop {
+              my $self = shift;
+              close($self->{parentfd});
+              close($self->{childfd});
+              kill(1, $self->{pid});
+              waitpid($self->{pid}, 0);
+              $self->{pid} = -1;
+          }
+
+          sub run {
+              my $self = shift;
+              my $pid = fork();
+              my $mntp;
+              my $err;
+              my $dh;
+              my $r;
+              my $buf = " "x200;
+              defined($pid) || die "fork: $!";
+              $self->{pid} = $pid;
+              if ($pid == 0) {
+            while(my $mntp = $self->{childfd}->getline) {
+                chomp($mntp);
+                $r = opendir($dh, "$mntp");
+                if (!$r) {
+              $err = $!;
+              if ($err == 116) {
+                  $self->{childfd}->write("STALE $mntp\n");
+                  next;
+              }
+                } else {
+              closedir($dh);
+                }
+                if (syscall($self->{statfs}, $mntp, $buf) == -1 && $! != 13) {
+              $self->{childfd}->write("ERROR $mntp\n");
+              next;
+                }
+                $ARGV[1] = "Checking: $mntp";
+                $self->{childfd}->write("OK $mntp\n") || die "child write: $!\n";
+                $mntp = '';
+            }
+              } else {
+            return 0;
+              }
+          }
+
+          sub check {
+              my $self = shift;
+              my $mntp = shift;
+              $self->{current} = "$mntp";
+              $self->{parentfd}->write("$mntp\n") || die "check print: $!\n";
+              $self->{time} = time();
+          }
+
+          sub get {
+              my $self = shift;
+              my $data = $self->{parentfd}->getline();
+              chomp($data);
+              (my $state, my $fs) = split(' ', $data);
+              $self->{current} = '';
+              $self->{time} = 0;
+              return ($state, $fs);
+          }
+
+          package main;
+          my @fstypes = qw(nfs mvfs);
+          my @stales;
+          my $tab;
+          my $statfs;
+          my @workers;
+
+
+          my @udata = POSIX::uname();
+          if ($udata[0] eq 'SunOS') {
+              $tab = '/etc/mnttab';
+              $statfs = 218;
+          } elsif ($udata[0] eq 'Linux') {
+              $tab = '/proc/mounts';
+              if ($udata[4] !~ 'x86_64') {
+            $statfs = 99;
+              } else {
+            $statfs = 137;
+              }
+          } else {
+              die "Only Linux/Solaris please\n";
+          }
+
+
+          sub get_mounts {
+              my $tab = shift;
+              my @mounts;
+              my @data;
+              open(MNTS, $tab);
+              while(<MNTS>) {
+            @data = split(/\s+/, $_);
+            my $mntp = $data[1];
+            my $fstype = $data[2];
+            if (grep( { $fstype eq $_ } @fstypes)) {
+                push(@mounts, $mntp);
+            }
+              }
+              close(MNTS);
+              return @mounts;
+          }
+
+
+          my @kaka = get_mounts($tab);
+          my $wrkr;
+          my @wrkrs;
+          my @working;
+          my @stale;
+          my @error;
+          my @timeout;
+          my $fs;
+          my $state;
+
+
+          for (my $i=0;$i < 4;$i++) {
+              $wrkr = worker->new($statfs);
+              $wrkr->start();
+              $wrkr->run();
+              $wrkrs[$i] = $wrkr;
+          }
+
+          my $i = 0;
+          my $mntp;
+          my $counter = 0;
+          while () {
+              if ($i > $#wrkrs) { $i = 0; }
+              my $wrkr = $wrkrs[$i];
+              if ($wrkr->{pid} == -1) { $i++ ; next; }
+              if ($wrkr->{select}->can_read(0) && $counter > 0) {
+            ($state, $fs) = $wrkr->get();
+            if ($state eq "OK") { push(@working, $fs); }
+            if ($state eq "STALE") { push(@stale, $fs); }
+            if ($state eq "ERROR") { push(@error, $fs); }
+            if ($state eq "TIMEOUT") { push(@timeout, $fs); }
+            $counter--;
+              }
+              elsif ($#kaka > -1 && $wrkr->{select}->can_write(0) && $wrkr->{current} eq '') {
+            $mntp = pop(@kaka); 
+            if (!$mntp) { next; }
+            $wrkr->check("$mntp");
+            $counter++;
+              }
+              elsif ((time() - $wrkr->{time}) > 10 && !($wrkr->{current} eq '')) {
+            print("timeout on: " . $wrkr->{current} . " check took " . (time() - $wrkr->{time}) . "seconds\n");
+            $wrkr->stop();
+            $counter--;
+            push(@timeout, $wrkr->{current});
+            my $w = $wrkr->new($statfs);
+            $w->start();
+            $wrkrs[$i] = $w;
+              }
+              if ($#kaka == -1 && $counter < 1) {
+            last;
+              }
+              $i++;
+          }
+
+
+          foreach $wrkr (@workers) {
+              $wrkr->stop();
+          }
+
+
+          for (@wrkrs) {
+              $_->stop();
+          }
+
+          wait();
+
+          my $broken = ($#stale+1) + ($#error+1) + ($#timeout+1);
+          my $perfdata = "working=" . ($#working+1) . " stale=" . ($#stale+1) . " error=" . ($#error+1) . " timeout=" . ($#timeout+1);
+          if ($broken > 0) {
+              my @jerr = (@stale,@error,@timeout);
+              my $fsstr = join("\n", @jerr);
+              print("CRITICAL $broken filesystem(s) with error(s) || $perfdata\n");
+              print("$fsstr\n");
+              exit(2);
+          } else {
+              print("OK No stale filesystems || $perfdata\n");
+              exit(0);
+          }
+
+
+    - name: Cleanstale
+      shell: |
+        timeout 60 /usr/lib/check_mk_agent/clean-stale.pl | grep -v  error| grep '/' |  while read line
+        do
+            nohup timeout 10 umount  "$line" &>/dev/null 
+            nohup timeout 10 umount -f  "$line" &>/dev/null 
+            nohup timeout 10 umount -l  "$line" &>/dev/null
+            nohup timeout 10 /usr/atria/bin/cleartool umount "$line" &>/dev/null 
+        done
+        true
+      args:
+        executable: /bin/bash
+      async: 240
+      ignore_errors: True
+
+    - name: Showstale
+      shell: |
+       timeout 60  /usr/lib/check_mk_agent/clean-stale.pl 
+      args:
+        executable: /bin/bash
+      register: checkstale
+
+    - debug:
+        msg: "{{ ansible_hostname }}: {{ checkstale.stdout }}"
